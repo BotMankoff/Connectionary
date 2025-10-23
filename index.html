@@ -5,60 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Quadrant Connections - Swap & Solve</title>
+    <title>CONNECTIONARY</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
         @keyframes slideIn {
-            from { transform: translateY(-10px); opacity: 0; }
+            from { transform: translateY(-20px); opacity: 0; }
             to { transform: translateY(0); opacity: 1; }
         }
-        @keyframes reveal {
-            from { transform: scale(0.8) rotate(-15deg); opacity: 0; }
-            to { transform: scale(1) rotate(0deg); opacity: 1; }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
         }
-        .pulse { animation: pulse 2s infinite; }
-        .slide-in { animation: slideIn 0.3s ease-out; }
-        .reveal-animation { 
-            animation: reveal 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
-            animation-fill-mode: forwards;
-            opacity: 0;
+        @keyframes confetti {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
         }
         .dragging {
             opacity: 0.5;
             cursor: grabbing;
+            animation: pulse 0.5s infinite;
         }
         .drag-over {
             background: rgba(59, 130, 246, 0.2) !important;
             border-color: rgb(59, 130, 246) !important;
-            transform: scale(1.05);
+            transform: scale(1.08);
+            transition: all 0.2s;
         }
         .locked-cell {
             background: linear-gradient(135deg, #fbbf24, #f59e0b) !important;
             cursor: not-allowed !important;
+            position: relative;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
         }
         .word-item {
             cursor: grab;
             -webkit-user-select: none;
             user-select: none;
             touch-action: none;
+            transition: transform 0.2s;
+        }
+        .word-item:hover {
+            transform: scale(1.05);
         }
         .word-item:active {
             cursor: grabbing;
         }
-        .quadrant-complete {
-            background: linear-gradient(45deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.2));
+        .theme-complete {
+            animation: slideIn 0.5s ease-out;
         }
-        @media (max-width: 768px) {
-            .aspect-square {
-                min-height: 80px;
-            }
+        .confetti-piece {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            animation: confetti 3s ease-out forwards;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal-content {
+            animation: slideIn 0.3s ease-out;
+        }
+        .progress-bar {
+            transition: width 0.5s ease-out;
+        }
+        .star {
+            color: #fbbf24;
+            filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.5));
+        }
+        .quadrant-icon {
+            position: absolute;
+            font-size: 48px;
+            z-index: 50;
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.3s ease-out;
+            filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.5));
+            pointer-events: none;
+        }
+        .quadrant-icon.active {
+            opacity: 1;
+            transform: scale(1);
+            animation: iconPop 0.5s ease-out;
+        }
+        @keyframes iconPop {
+            0% { transform: scale(0) rotate(0deg); opacity: 0; }
+            50% { transform: scale(1.2) rotate(10deg); }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
     </style>
 </head>
@@ -66,106 +114,435 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback, useRef } = React;
 
-        const GAME_DATA = [
+        // All puzzles including original and new ones
+        const PUZZLES = [
             {
-                title: "The RING Puzzle",
-                description: "A puzzle of actions, items, and communication.",
+                id: 1,
+                title: "Squared Circle",
+                description: "Actions, items, and communication",
                 centerWord: "RING",
-                solution: [["HOOK", "TITLE", "AWARD"],["TELEGRAPH", "RING", "WATCH"],["CALL", "CABLE", "TAPE"]],
+                solutions: [
+                    [["HOOK", "TITLE", "AWARD"],["TELEGRAPH", "RING", "WATCH"],["CALL", "CABLE", "TAPE"]],
+                    [["CALL", "TELEGRAPH", "HOOK"],["CABLE", "RING", "TITLE"],["TAPE", "WATCH", "AWARD"]],
+                    [["AWARD", "WATCH", "TAPE"],["TITLE", "RING", "CABLE"],["HOOK", "TELEGRAPH", "CALL"]],
+                    [["TAPE", "CABLE", "CALL"],["WATCH", "RING", "TELEGRAPH"],["AWARD", "TITLE", "HOOK"]],
+                    [["AWARD", "TITLE", "HOOK"],["WATCH", "RING", "TELEGRAPH"],["TAPE", "CABLE", "CALL"]],
+                    [["TAPE", "WATCH", "AWARD"],["CABLE", "RING", "TITLE"],["CALL", "TELEGRAPH", "HOOK"]],
+                    [["CALL", "CABLE", "TAPE"],["TELEGRAPH", "RING", "WATCH"],["HOOK", "TITLE", "AWARD"]],
+                    [["HOOK", "TELEGRAPH", "CALL"],["TITLE", "RING", "CABLE"],["AWARD", "WATCH", "TAPE"]]
+                ],
                 allWords: ["HOOK", "TITLE", "AWARD", "TELEGRAPH", "WATCH", "CALL", "CABLE", "TAPE"],
                 quadrantClues: [
-                    { "name": "Top-Left", "clue": "BOXING TERMS", "words": ["HOOK", "TITLE", "TELEGRAPH", "RING"], "positions": [[0,0],[0,1],[1,0],[1,1]], "color": "blue", "icon": "🥊" },
-                    { "name": "Top-Right", "clue": "ITEMS THAT CAN BE 'GIVEN'", "words": ["TITLE", "AWARD", "WATCH", "RING"], "positions": [[0,1],[0,2],[1,1],[1,2]], "color": "green", "icon": "🎁" },
-                    { "name": "Bottom-Left", "clue": "VERBS OF COMMUNICATION", "words": ["TELEGRAPH", "CALL", "CABLE", "RING"], "positions": [[1,0],[1,1],[2,0],[2,1]], "color": "purple", "icon": "💬" },
-                    { "name": "Bottom-Right", "clue": "THINGS THAT ENCIRCLE", "words": ["WATCH", "TAPE", "CABLE", "RING"], "positions": [[1,1],[1,2],[2,1],[2,2]], "color": "orange", "icon": "⭕" }
-                ]
+                    { clue: "BOXING TERMS", words: ["HOOK", "TITLE", "TELEGRAPH", "RING"], color: "blue", icon: "🥊" },
+                    { clue: "ITEMS THAT CAN BE 'GIVEN'", words: ["TITLE", "AWARD", "WATCH", "RING"], color: "green", icon: "🎁" },
+                    { clue: "VERBS OF COMMUNICATION", words: ["TELEGRAPH", "CALL", "CABLE", "RING"], color: "purple", icon: "💬" },
+                    { clue: "THINGS THAT ENCIRCLE", words: ["WATCH", "TAPE", "CABLE", "RING"], color: "orange", icon: "⭕" }
+                ],
+                explanations: {
+                    "HOOK": "A type of punch in boxing.",
+                    "TITLE": "A boxing championship / An honor.",
+                    "AWARD": "Something given for achievement.",
+                    "TELEGRAPH": "To signal a punch / A method of communication.",
+                    "RING": "Boxing arena / A gift / To call someone / An encircling band.",
+                    "WATCH": "A gift item / Encircles the wrist.",
+                    "CALL": "To communicate by phone.",
+                    "CABLE": "To send a message / An encircling cord.",
+                    "TAPE": "Used to wrap or encircle things."
+                },
+                hints: []
             },
             {
-                title: "The TABLE Puzzle",
-                description: "A puzzle of objects, data, and furniture.",
+                id: 2,
+                title: "Leaf Through This",
+                description: "Objects, data, and furniture",
                 centerWord: "TABLE",
-                solution: [["SPINE", "LEAF", "CHAIR"],["INDEX", "TABLE", "COUNTER"],["COMPASS", "GRAPH", "DIAGRAM"]],
+                solutions: [
+                    [["SPINE", "LEAF", "CHAIR"],["INDEX", "TABLE", "COUNTER"],["COMPASS", "GRAPH", "DIAGRAM"]],
+                    [["COMPASS", "INDEX", "SPINE"],["GRAPH", "TABLE", "LEAF"],["DIAGRAM", "COUNTER", "CHAIR"]],
+                    [["CHAIR", "COUNTER", "DIAGRAM"],["LEAF", "TABLE", "GRAPH"],["SPINE", "INDEX", "COMPASS"]],
+                    [["DIAGRAM", "GRAPH", "COMPASS"],["COUNTER", "TABLE", "INDEX"],["CHAIR", "LEAF", "SPINE"]],
+                    [["CHAIR", "LEAF", "SPINE"],["COUNTER", "TABLE", "INDEX"],["DIAGRAM", "GRAPH", "COMPASS"]],
+                    [["DIAGRAM", "COUNTER", "CHAIR"],["GRAPH", "TABLE", "LEAF"],["COMPASS", "INDEX", "SPINE"]],
+                    [["SPINE", "INDEX", "COMPASS"],["LEAF", "TABLE", "GRAPH"],["CHAIR", "COUNTER", "DIAGRAM"]],
+                    [["COMPASS", "GRAPH", "DIAGRAM"],["INDEX", "TABLE", "COUNTER"],["SPINE", "LEAF", "CHAIR"]]
+                ],
                 allWords: ["SPINE", "LEAF", "CHAIR", "INDEX", "COUNTER", "COMPASS", "GRAPH", "DIAGRAM"],
                 quadrantClues: [
-                    { "name": "Top-Left", "clue": "PARTS OF A BOOK", "words": ["SPINE","LEAF","INDEX","TABLE"], "positions": [[0,0],[0,1],[1,0],[1,1]], "color": "blue", "icon": "📚" },
-                    { "name": "Top-Right", "clue": "ITEMS OF FURNITURE", "words": ["LEAF","CHAIR","TABLE","COUNTER"], "positions": [[0,1],[0,2],[1,1],[1,2]], "color": "green", "icon": "🛋️" },
-                    { "name": "Bottom-Left", "clue": "FEATURES OF A MAP", "words": ["INDEX","TABLE","COMPASS","GRAPH"], "positions": [[1,0],[1,1],[2,0],[2,1]], "color": "purple", "icon": "🗺️" },
-                    { "name": "Bottom-Right", "clue": "ELEMENTS OF A DATA REPORT", "words": ["TABLE","COUNTER","GRAPH","DIAGRAM"], "positions": [[1,1],[1,2],[2,1],[2,2]], "color": "orange", "icon": "🧾" }
-                ]
+                    { clue: "PARTS OF A BOOK", words: ["SPINE","LEAF","INDEX","TABLE"], color: "blue", icon: "📚" },
+                    { clue: "ITEMS OF FURNITURE", words: ["LEAF","CHAIR","TABLE","COUNTER"], color: "green", icon: "🛋️" },
+                    { clue: "FEATURES OF A MAP", words: ["INDEX","TABLE","COMPASS","GRAPH"], color: "purple", icon: "🧭" },
+                    { clue: "ELEMENTS OF A DATA REPORT", words: ["TABLE","COUNTER","GRAPH","DIAGRAM"], color: "orange", icon: "📊" }
+                ],
+                explanations: {
+                    "SPINE": "A part of a book.",
+                    "LEAF": "A page in a book / A section of a dining table.",
+                    "CHAIR": "An item of furniture.",
+                    "INDEX": "A section of a book / A feature on a map.",
+                    "TABLE": "Table of contents / An item of furniture / A chart on a map / A data-set in a report.",
+                    "COUNTER": "A piece of furniture / An element in a data report.",
+                    "COMPASS": "A feature on a map.",
+                    "GRAPH": "A feature on a map / An element in a data report.",
+                    "DIAGRAM": "An element in a data report."
+                },
+                hints: []
             },
             {
-                title: "The PUNCH Puzzle",
-                description: "A puzzle of fighting, comedy, drinks, and tools.",
-                centerWord: 'PUNCH',
-                solution: [['UPPERCUT', 'RIPOSTE', 'SKIT'],['SMASH', 'PUNCH', 'BIT'],['NEGRONI', 'SCREWDRIVER', 'AWL']],
-                allWords: ['UPPERCUT', 'RIPOSTE', 'SKIT', 'SMASH', 'BIT', 'NEGRONI', 'SCREWDRIVER', 'AWL'],
+                id: 3,
+                title: "The Punchline",
+                description: "Fighting, comedy, drinks, and tools",
+                centerWord: "PUNCH",
+                solutions: [
+                    [["UPPERCUT", "RIPOSTE", "SKIT"],["SMASH", "PUNCH", "BIT"],["NEGRONI", "SCREWDRIVER", "AWL"]],
+                    [["SKIT", "BIT", "AWL"],["RIPOSTE", "PUNCH", "SCREWDRIVER"],["UPPERCUT", "SMASH", "NEGRONI"]],
+                    [["AWL", "SCREWDRIVER", "NEGRONI"],["BIT", "PUNCH", "SMASH"],["SKIT", "RIPOSTE", "UPPERCUT"]],
+                    [["NEGRONI", "SMASH", "UPPERCUT"],["SCREWDRIVER", "PUNCH", "RIPOSTE"],["AWL", "BIT", "SKIT"]],
+                    [["SKIT", "RIPOSTE", "UPPERCUT"],["BIT", "PUNCH", "SMASH"],["AWL", "SCREWDRIVER", "NEGRONI"]],
+                    [["AWL", "BIT", "SKIT"],["SCREWDRIVER", "PUNCH", "RIPOSTE"],["NEGRONI", "SMASH", "UPPERCUT"]],
+                    [["NEGRONI", "SCREWDRIVER", "AWL"],["SMASH", "PUNCH", "BIT"],["UPPERCUT", "RIPOSTE", "SKIT"]],
+                    [["UPPERCUT", "SMASH", "NEGRONI"],["RIPOSTE", "PUNCH", "SCREWDRIVER"],["SKIT", "BIT", "AWL"]]
+                ],
+                allWords: ["UPPERCUT", "RIPOSTE", "SKIT", "SMASH", "BIT", "NEGRONI", "SCREWDRIVER", "AWL"],
                 quadrantClues: [
-                    { name: 'Top-Left', clue: 'FIGHTING TERMS', words: ['UPPERCUT', 'RIPOSTE', 'SMASH', 'PUNCH'], positions: [[0,0], [0,1], [1,0], [1,1]], color: 'blue', icon: '🤺' },
-                    { name: 'Top-Right', clue: 'COMEDY TERMS', words: ['RIPOSTE', 'SKIT', 'PUNCH', 'BIT'], positions: [[0,1], [0,2], [1,1], [1,2]], color: 'green', icon: '😂' },
-                    { name: 'Bottom-Left', clue: 'COCKTAILS', words: ['SMASH', 'PUNCH', 'NEGRONI', 'SCREWDRIVER'], positions: [[1,0], [1,1], [2,0], [2,1]], color: 'purple', icon: '🍸' },
-                    { name: 'Bottom-Right', clue: 'HAND TOOLS', words: ['PUNCH', 'BIT', 'SCREWDRIVER', 'AWL'], positions: [[1,1], [1,2], [2,1], [2,2]], color: 'orange', icon: '🛠️' }
-                ]
+                    { clue: "FIGHTING TERMS", words: ["UPPERCUT", "RIPOSTE", "SMASH", "PUNCH"], color: "blue", icon: "🤺" },
+                    { clue: "COMEDY TERMS", words: ["RIPOSTE", "SKIT", "PUNCH", "BIT"], color: "green", icon: "😂" },
+                    { clue: "COCKTAILS", words: ["SMASH", "PUNCH", "NEGRONI", "SCREWDRIVER"], color: "purple", icon: "🍸" },
+                    { clue: "HAND TOOLS", words: ["PUNCH", "BIT", "SCREWDRIVER", "AWL"], color: "orange", icon: "🛠️" }
+                ],
+                explanations: {
+                    "UPPERCUT": "An upward boxing punch.",
+                    "RIPOSTE": "A quick counter-attack in fencing or boxing / A witty comeback.",
+                    "SKIT": "A short comedy sketch.",
+                    "SMASH": "A powerful hit in boxing / A cocktail with fruit and spirits.",
+                    "PUNCH": "A boxing strike / A comedy punchline / A fruity party drink / A tool for making holes.",
+                    "BIT": "A comedy routine / A drill attachment tool.",
+                    "NEGRONI": "An Italian cocktail with gin, vermouth, and Campari.",
+                    "SCREWDRIVER": "A vodka and orange juice cocktail / A tool for driving screws.",
+                    "AWL": "A pointed tool for making holes in leather or wood."
+                },
+                hints: []
             },
             {
-                title: "The BOLT Puzzle",
-                description: "A puzzle of motion, machinery, fabric, and weather.",
+                id: 4,
+                title: "Storm Warning",
+                description: "Motion, machinery, fabric, and weather",
                 centerWord: "BOLT",
-                solution: [["AXLE", "SPRING", "DASH"],["PIN", "BOLT", "SURGE"],["SEAM", "SHEET", "HAIL"]],
+                solutions: [
+                    [["AXLE", "SPRING", "DASH"],["PIN", "BOLT", "SURGE"],["SEAM", "SHEET", "HAIL"]],
+                    [["SEAM", "PIN", "AXLE"],["SHEET", "BOLT", "SPRING"],["HAIL", "SURGE", "DASH"]],
+                    [["HAIL", "SHEET", "SEAM"],["SURGE", "BOLT", "PIN"],["DASH", "SPRING", "AXLE"]],
+                    [["DASH", "SURGE", "HAIL"],["SPRING", "BOLT", "SHEET"],["AXLE", "PIN", "SEAM"]],
+                    [["DASH", "SPRING", "AXLE"],["SURGE", "BOLT", "PIN"],["HAIL", "SHEET", "SEAM"]],
+                    [["HAIL", "SURGE", "DASH"],["SHEET", "BOLT", "SPRING"],["SEAM", "PIN", "AXLE"]],
+                    [["AXLE", "PIN", "SEAM"],["SPRING", "BOLT", "SHEET"],["DASH", "SURGE", "HAIL"]],
+                    [["SEAM", "SHEET", "HAIL"],["PIN", "BOLT", "SURGE"],["AXLE", "SPRING", "DASH"]]
+                ],
                 allWords: ["AXLE","SPRING","DASH","PIN","SURGE","SEAM","SHEET","HAIL"],
                 quadrantClues: [
-                    { "name": "Top-Left", "clue": "MECHANICAL COMPONENTS", "words": ["AXLE","SPRING","PIN","BOLT"], "positions": [[0,0],[0,1],[1,0],[1,1]], "color": "blue", "icon": "🔩" },
-                    { "name": "Top-Right", "clue": "VERBS OF SUDDEN MOVEMENT", "words": ["SPRING","DASH","BOLT","SURGE"], "positions": [[0,1],[0,2],[1,1],[1,2]], "color": "green", "icon": "🏃" },
-                    { "name": "Bottom-Left", "clue": "SEWING & FABRIC TERMS", "words": ["PIN","BOLT","SEAM","SHEET"], "positions": [[1,0],[1,1],[2,0],[2,1]], "color": "purple", "icon": "🧵" },
-                    { "name": "Bottom-Right", "clue": "WEATHER & STORM TERMS", "words": ["BOLT","SURGE","SHEET","HAIL"], "positions": [[1,1],[1,2],[2,1],[2,2]], "color": "orange", "icon": "⛈️" }
-                ]
+                    { clue: "MECHANICAL COMPONENTS", words: ["AXLE","SPRING","PIN","BOLT"], color: "blue", icon: "🔩" },
+                    { clue: "VERBS OF SUDDEN MOVEMENT", words: ["SPRING","DASH","BOLT","SURGE"], color: "green", icon: "🏃" },
+                    { clue: "SEWING & FABRIC TERMS", words: ["PIN","BOLT","SEAM","SHEET"], color: "purple", icon: "🧵" },
+                    { clue: "WEATHER & STORM TERMS", words: ["BOLT","SURGE","SHEET","HAIL"], color: "orange", icon: "⛈️" }
+                ],
+                explanations: {
+                    "AXLE": "A mechanical component.",
+                    "SPRING": "A mechanical component / To move suddenly.",
+                    "DASH": "To move suddenly.",
+                    "PIN": "A mechanical component / A sewing item.",
+                    "BOLT": "A mechanical fastener / To move suddenly / A roll of fabric / A bolt of lightning.",
+                    "SURGE": "To move suddenly / A storm surge in weather.",
+                    "SEAM": "A term in sewing.",
+                    "SHEET": "A sheet of fabric / A sheet of ice/rain.",
+                    "HAIL": "A type of weather."
+                },
+                hints: []
             },
             {
-                title: "The SCALE Puzzle",
-                description: "A puzzle of music, mountains, measuring, and mise en place.",
+                id: 5,
+                title: "Measure for Measure",
+                description: "Music, mountains, measuring, and mise en place",
                 centerWord: "SCALE",
-                solution: [["OCTAVE", "PITCH", "BELAY"],["METER", "SCALE", "SCRAMBLE"],["CALIPER", "TARE", "DICE"]],
+                solutions: [
+                    [["OCTAVE", "PITCH", "BELAY"],["METER", "SCALE", "SCRAMBLE"],["CALIPER", "TARE", "DICE"]],
+                    [["CALIPER", "METER", "OCTAVE"],["TARE", "SCALE", "PITCH"],["DICE", "SCRAMBLE", "BELAY"]],
+                    [["DICE", "TARE", "CALIPER"],["SCRAMBLE", "SCALE", "METER"],["BELAY", "PITCH", "OCTAVE"]],
+                    [["BELAY", "SCRAMBLE", "DICE"],["PITCH", "SCALE", "TARE"],["OCTAVE", "METER", "CALIPER"]],
+                    [["BELAY", "PITCH", "OCTAVE"],["SCRAMBLE", "SCALE", "METER"],["DICE", "TARE", "CALIPER"]],
+                    [["DICE", "SCRAMBLE", "BELAY"],["TARE", "SCALE", "PITCH"],["CALIPER", "METER", "OCTAVE"]],
+                    [["OCTAVE", "METER", "CALIPER"],["PITCH", "SCALE", "TARE"],["BELAY", "SCRAMBLE", "DICE"]],
+                    [["CALIPER", "TARE", "DICE"],["METER", "SCALE", "SCRAMBLE"],["OCTAVE", "PITCH", "BELAY"]]
+                ],
                 allWords: ["OCTAVE","PITCH","BELAY","METER","SCRAMBLE","CALIPER","TARE","DICE"],
                 quadrantClues: [
-                    { "name": "Top-Left", "clue": "MUSIC TERMS", "words": ["OCTAVE","PITCH","METER","SCALE"], "positions": [[0,0],[0,1],[1,0],[1,1]], "color": "blue", "icon": "🎼" },
-                    { "name": "Top-Right", "clue": "CLIMBING & MOUNTAINEERING TERMS", "words": ["PITCH","BELAY","SCALE","SCRAMBLE"], "positions": [[0,1],[0,2],[1,1],[1,2]], "color": "green", "icon": "🧗" },
-                    { "name": "Bottom-Left", "clue": "MEASURING INSTRUMENTS & FUNCTIONS", "words": ["METER","SCALE","CALIPER","TARE"], "positions": [[1,0],[1,1],[2,0],[2,1]], "color": "purple", "icon": "📏" },
-                    { "name": "Bottom-Right", "clue": "KITCHEN PREP & COOKING VERBS", "words": ["SCALE","SCRAMBLE","TARE","DICE"], "positions": [[1,1],[1,2],[2,1],[2,2]], "color": "orange", "icon": "🍳" }
-                ]
+                    { clue: "MUSIC TERMS", words: ["OCTAVE","PITCH","METER","SCALE"], color: "blue", icon: "🎼" },
+                    { clue: "CLIMBING & MOUNTAINEERING TERMS", words: ["PITCH","BELAY","SCALE","SCRAMBLE"], color: "green", icon: "🧗" },
+                    { clue: "MEASURING INSTRUMENTS & FUNCTIONS", words: ["METER","SCALE","CALIPER","TARE"], color: "purple", icon: "📏" },
+                    { clue: "KITCHEN PREP & COOKING VERBS", words: ["SCALE","SCRAMBLE","TARE","DICE"], color: "orange", icon: "🍳" }
+                ],
+                explanations: {
+                    "OCTAVE": "A series of 8 notes in music.",
+                    "PITCH": "A musical tone / A steep section in climbing.",
+                    "BELAY": "To secure a rope while climbing.",
+                    "METER": "Musical rhythm / A measuring device.",
+                    "SCALE": "Musical notes in order / To climb / A weighing device / To remove fish scales.",
+                    "SCRAMBLE": "A type of easy climb / To mix eggs while cooking.",
+                    "CALIPER": "A precision measuring instrument.",
+                    "TARE": "To zero out a scale / Weight of an empty container.",
+                    "DICE": "To cut food into small cubes."
+                },
+                hints: []
+            },
+            {
+                id: 6,
+                title: "Under Fire",
+                description: "Thermodynamics, kitchen, law, and sport",
+                centerWord: "HEAT",
+                solutions: [
+                    [["THERMAL", "BOIL", "SEAR"],["HOT", "HEAT", "SEASON"],["WARRANT", "BOOK", "LAP"]],
+                    [["WARRANT", "HOT", "THERMAL"],["BOOK", "HEAT", "BOIL"],["LAP", "SEASON", "SEAR"]],
+                    [["SEAR", "SEASON", "LAP"],["BOIL", "HEAT", "BOOK"],["THERMAL", "HOT", "WARRANT"]],
+                    [["LAP", "BOOK", "WARRANT"],["SEASON", "HEAT", "HOT"],["SEAR", "BOIL", "THERMAL"]],
+                    [["SEAR", "BOIL", "THERMAL"],["SEASON", "HEAT", "HOT"],["LAP", "BOOK", "WARRANT"]],
+                    [["LAP", "SEASON", "SEAR"],["BOOK", "HEAT", "BOIL"],["WARRANT", "HOT", "THERMAL"]],
+                    [["THERMAL", "HOT", "WARRANT"],["BOIL", "HEAT", "BOOK"],["SEAR", "SEASON", "LAP"]],
+                    [["WARRANT", "BOOK", "LAP"],["HOT", "HEAT", "SEASON"],["THERMAL", "BOIL", "SEAR"]]
+                ],
+                allWords: ["THERMAL","BOIL","SEAR","HOT","SEASON","WARRANT","BOOK","LAP"],
+                quadrantClues: [
+                    { clue: "THERMODYNAMICS & PHYSICS TERMS", words: ["THERMAL","BOIL","HOT","HEAT"], color: "blue", icon: "🔥" },
+                    { clue: "COOKING & FOOD-PREP VERBS", words: ["BOIL","SEAR","HEAT","SEASON"], color: "orange", icon: "🍳" },
+                    { clue: "LAW ENFORCEMENT & JUSTICE TERMS", words: ["HOT","HEAT","WARRANT","BOOK"], color: "purple", icon: "🚔" },
+                    { clue: "SPORTS & COMPETITION TERMS", words: ["HEAT","SEASON","BOOK","LAP"], color: "green", icon: "🏁" }
+                ],
+                explanations: {
+                    "THERMAL": "Relating to heat.",
+                    "BOIL": "A liquid's change of state / A method of cooking.",
+                    "SEAR": "A cooking technique using high heat.",
+                    "HOT": "High in temperature / Slang for stolen goods.",
+                    "HEAT": "A form of energy / To warm up food / Slang for police / A qualifying race.",
+                    "SEASON": "To add flavor to food / A period of play for a sport.",
+                    "WARRANT": "A legal document for an arrest.",
+                    "BOOK": "To charge with a crime / To penalize in a game, like soccer or rugby.",
+                    "LAP": "A circuit in a race."
+                },
+                hints: []
+            },
+            {
+                id: 7,
+                title: "Break a Leg",
+                description: "Theater, medicine, fishing, and metalwork",
+                centerWord: "CAST",
+                solutions: [
+                    [["CURTAIN", "DRESSING", "SUTURE"],["LINE", "CAST", "BRACE"],["REEL", "LEAD", "ANVIL"]],
+                    [["REEL", "LINE", "CURTAIN"],["LEAD", "CAST", "DRESSING"],["ANVIL", "BRACE", "SUTURE"]],
+                    [["SUTURE", "BRACE", "ANVIL"],["DRESSING", "CAST", "LEAD"],["CURTAIN", "LINE", "REEL"]],
+                    [["ANVIL", "LEAD", "REEL"],["BRACE", "CAST", "LINE"],["SUTURE", "DRESSING", "CURTAIN"]],
+                    [["SUTURE", "DRESSING", "CURTAIN"],["BRACE", "CAST", "LINE"],["ANVIL", "LEAD", "REEL"]],
+                    [["ANVIL", "BRACE", "SUTURE"],["LEAD", "CAST", "DRESSING"],["REEL", "LINE", "CURTAIN"]],
+                    [["CURTAIN", "LINE", "REEL"],["DRESSING", "CAST", "LEAD"],["SUTURE", "BRACE", "ANVIL"]],
+                    [["REEL", "LEAD", "ANVIL"],["LINE", "CAST", "BRACE"],["CURTAIN", "DRESSING", "SUTURE"]]
+                ],
+                allWords: ["CURTAIN","DRESSING","SUTURE","LINE","BRACE","REEL","LEAD","ANVIL"],
+                quadrantClues: [
+                    { clue: "THEATER & PERFORMANCE TERMS", words: ["CURTAIN","DRESSING","LINE","CAST"], color: "blue", icon: "🎭" },
+                    { clue: "MEDICAL EQUIPMENT & TREATMENTS", words: ["DRESSING","SUTURE","CAST","BRACE"], color: "green", icon: "🏥" },
+                    { clue: "FISHING EQUIPMENT & TECHNIQUES", words: ["LINE","CAST","REEL","LEAD"], color: "purple", icon: "🎣" },
+                    { clue: "METALWORKING & FOUNDRY TERMS", words: ["CAST","BRACE","LEAD","ANVIL"], color: "orange", icon: "⚒️" }
+                ],
+                explanations: {
+                    "CURTAIN": "A theater screen.",
+                    "DRESSING": "Theater dressing room / A medical wound cover.",
+                    "SUTURE": "Medical stitches.",
+                    "LINE": "A line of dialogue / A fishing line.",
+                    "CAST": "The cast of a play / A plaster cast / To cast a line / To cast metal.",
+                    "BRACE": "A medical brace / A structural metal brace.",
+                    "REEL": "A fishing reel.",
+                    "LEAD": "A lead fishing sinker / The metal, lead.",
+                    "ANVIL": "A metalworking tool."
+                },
+                hints: []
+            },
+            {
+                id: 8,
+                title: "Mind the Gap",
+                description: "Mind, money, neurons, and signals",
+                centerWord: "IMPULSE",
+                solutions: [
+                    [["ANXIETY", "WITHDRAWAL", "RECEIPT"],["INHIBITION", "IMPULSE", "CHARGE"],["AXON", "POTENTIAL", "RESISTOR"]],
+                    [["AXON", "INHIBITION", "ANXIETY"],["POTENTIAL", "IMPULSE", "WITHDRAWAL"],["RESISTOR", "CHARGE", "RECEIPT"]],
+                    [["RECEIPT", "CHARGE", "RESISTOR"],["WITHDRAWAL", "IMPULSE", "POTENTIAL"],["ANXIETY", "INHIBITION", "AXON"]],
+                    [["RESISTOR", "POTENTIAL", "AXON"],["CHARGE", "IMPULSE", "INHIBITION"],["RECEIPT", "WITHDRAWAL", "ANXIETY"]],
+                    [["RECEIPT", "WITHDRAWAL", "ANXIETY"],["CHARGE", "IMPULSE", "INHIBITION"],["RESISTOR", "POTENTIAL", "AXON"]],
+                    [["RESISTOR", "CHARGE", "RECEIPT"],["POTENTIAL", "IMPULSE", "WITHDRAWAL"],["AXON", "INHIBITION", "ANXIETY"]],
+                    [["ANXIETY", "INHIBITION", "AXON"],["WITHDRAWAL", "IMPULSE", "POTENTIAL"],["RECEIPT", "CHARGE", "RESISTOR"]],
+                    [["AXON", "POTENTIAL", "RESISTOR"],["INHIBITION", "IMPULSE", "CHARGE"],["ANXIETY", "WITHDRAWAL", "RECEIPT"]]
+                ],
+                allWords: ["ANXIETY","WITHDRAWAL","RECEIPT","INHIBITION","CHARGE","AXON","POTENTIAL","RESISTOR"],
+                quadrantClues: [
+                    { clue: "PSYCHIATRY & CLINICAL PSYCHOLOGY", words: ["ANXIETY","WITHDRAWAL","INHIBITION","IMPULSE"], color: "blue", icon: "🧠" },
+                    { clue: "PAYMENTS & CONSUMER PURCHASES", words: ["WITHDRAWAL","RECEIPT","IMPULSE","CHARGE"], color: "green", icon: "💳" },
+                    { clue: "NEUROSCIENCE & NEUROPHYSIOLOGY", words: ["INHIBITION","IMPULSE","AXON","POTENTIAL"], color: "purple", icon: "🧬" },
+                    { clue: "ELECTRICITY & CIRCUITS", words: ["IMPULSE","CHARGE","POTENTIAL","RESISTOR"], color: "orange", icon: "⚡" }
+                ],
+                explanations: {
+                    "ANXIETY": "A condition studied in clinical psychology.",
+                    "WITHDRAWAL": "A psychological symptom / Taking money from an account.",
+                    "RECEIPT": "Proof of a consumer purchase.",
+                    "INHIBITION": "Behavioral restraint or shyness in psychology / Suppression of nerve signals in neuroscience.",
+                    "IMPULSE": "A psychological urge / An impulse purchase / A nerve signal / An electrical signal.",
+                    "CHARGE": "To charge for a purchase / An electrical charge.",
+                    "AXON": "The part of a neuron that carries impulses.",
+                    "POTENTIAL": "An action potential in neuroscience / Electrical potential (voltage).",
+                    "RESISTOR": "A component in an electrical circuit."
+                },
+                hints: []
+            },
+            {
+                id: 9,
+                title: "The Gambit",
+                description: "Games, art, finance, and journalism",
+                centerWord: "PIECE",
+                solutions: [
+                    [["PAWN", "MINIATURE", "STATUE"],["CHECKER", "PIECE", "LOT"],["SCOOP", "STOCK", "SHARE"]],
+                    [["SCOOP", "CHECKER", "PAWN"],["STOCK", "PIECE", "MINIATURE"],["SHARE", "LOT", "STATUE"]],
+                    [["STATUE", "LOT", "SHARE"],["MINIATURE", "PIECE", "STOCK"],["PAWN", "CHECKER", "SCOOP"]],
+                    [["SHARE", "STOCK", "SCOOP"],["LOT", "PIECE", "CHECKER"],["STATUE", "MINIATURE", "PAWN"]],
+                    [["STATUE", "MINIATURE", "PAWN"],["LOT", "PIECE", "CHECKER"],["SHARE", "STOCK", "SCOOP"]],
+                    [["SHARE", "LOT", "STATUE"],["STOCK", "PIECE", "MINIATURE"],["SCOOP", "CHECKER", "PAWN"]],
+                    [["PAWN", "CHECKER", "SCOOP"],["MINIATURE", "PIECE", "STOCK"],["STATUE", "LOT", "SHARE"]],
+                    [["SCOOP", "STOCK", "SHARE"],["CHECKER", "PIECE", "LOT"],["PAWN", "MINIATURE", "STATUE"]]
+                ],
+                allWords: ["PAWN", "MINIATURE", "STATUE", "CHECKER", "LOT", "SCOOP", "STOCK", "SHARE"],
+                quadrantClues: [
+                    { clue: "BOARD GAME COMPONENTS", words: ["PAWN","MINIATURE","CHECKER","PIECE"], color: "blue", icon: "🎲" },
+                    { clue: "TERMS FOR ARTWORK", words: ["MINIATURE","STATUE","PIECE","LOT"], color: "green", icon: "🎨" },
+                    { clue: "PRINT MEDIA TERMS", words: ["CHECKER","PIECE","SCOOP","STOCK"], color: "purple", icon: "📰" },
+                    { clue: "FINANCIAL STAKES", words: ["PIECE","LOT","STOCK","SHARE"], color: "orange", icon: "📈" }
+                ],
+                explanations: {
+                    "PAWN": "The most numerous piece in the game of chess.",
+                    "MINIATURE": "A small, detailed model used as a game piece / A small, highly detailed portrait.",
+                    "STATUE": "A carved or cast figure as a work of art.",
+                    "CHECKER": "A piece used in checkers / A fact-checker in media.",
+                    "PIECE": "A token in a board game / An artwork / A written article / A share of a business.",
+                    "LOT": "An item or set of items for sale at auction / A bundle of shares.",
+                    "SCOOP": "An exclusive news story.",
+                    "STOCK": "A stock photo used in media / An ownership share in a company.",
+                    "SHARE": "A unit of ownership in a corporation or financial asset."
+                },
+                hints: []
+            },
+            {
+                id: 10,
+                title: "Rolling Stone",
+                description: "A puzzle of sport, building, kitchen prep, and color.",
+                centerWord: "STONE",
+                solutions: [
+                    [["BIRDIE", "MARBLE", "GRANITE"],["SEED", "STONE", "SLATE"],["PIT", "BROWN", "TAUPE"]],
+                    [["PIT", "SEED", "BIRDIE"],["BROWN", "STONE", "MARBLE"],["TAUPE", "SLATE", "GRANITE"]],
+                    [["TAUPE", "BROWN", "PIT"],["SLATE", "STONE", "SEED"],["GRANITE", "MARBLE", "BIRDIE"]],
+                    [["GRANITE", "SLATE", "TAUPE"],["MARBLE", "STONE", "BROWN"],["BIRDIE", "SEED", "PIT"]],
+                    [["GRANITE", "MARBLE", "BIRDIE"],["SLATE", "STONE", "SEED"],["TAUPE", "BROWN", "PIT"]],
+                    [["TAUPE", "SLATE", "GRANITE"],["BROWN", "STONE", "MARBLE"],["PIT", "SEED", "BIRDIE"]],
+                    [["BIRDIE", "SEED", "PIT"],["MARBLE", "STONE", "BROWN"],["GRANITE", "SLATE", "TAUPE"]],
+                    [["PIT", "BROWN", "TAUPE"],["SEED", "STONE", "SLATE"],["BIRDIE", "MARBLE", "GRANITE"]]
+                ],
+                allWords: ["BIRDIE", "MARBLE", "GRANITE", "SEED", "SLATE", "PIT", "BROWN", "TAUPE"],
+                quadrantClues: [
+                    { clue: "SPORTS & GAMES TERMS", words: ["BIRDIE", "MARBLE", "SEED", "STONE"], color: "blue", icon: "🏟️" },
+                    { clue: "BUILDING STONE MATERIALS", words: ["MARBLE", "GRANITE", "SLATE", "STONE"], color: "green", icon: "🏛️" },
+                    { clue: "KITCHEN PREP VERBS", words: ["SEED", "STONE", "PIT", "BROWN"], color: "purple", icon: "🍳" },
+                    { clue: "COLOR WORDS", words: ["SLATE", "STONE", "BROWN", "TAUPE"], color: "orange", icon: "🎨" }
+                ],
+                explanations: {
+                    "BIRDIE": "A score of one under par in golf.",
+                    "MARBLE": "A game piece / A type of stone.",
+                    "GRANITE": "A type of building stone.",
+                    "SEED": "A tournament ranking / To remove seeds from fruit.",
+                    "STONE": "A playing piece in Go or curling / A building material / To remove a stone from fruit / A color.",
+                    "SLATE": "A type of building stone / A color.",
+                    "PIT": "To remove a pit from fruit.",
+                    "BROWN": "To cook something until brown / A color.",
+                    "TAUPE": "A brownish-gray color."
+                },
+                hints: []
             }
         ];
 
-        function QuadrantConnections() {
-            const [selectedGameIndex, setSelectedGameIndex] = useState(null);
-            
+        function ConnectionaryGame() {
+            const [currentScreen, setCurrentScreen] = useState('gallery'); // 'gallery' or 'game'
+            const [currentPuzzleIndex, setCurrentPuzzleIndex] = useState(0);
             const [grid, setGrid] = useState([]);
             const [shuffledClues, setShuffledClues] = useState([]);
             const [draggedItem, setDraggedItem] = useState(null);
             const [solved, setSolved] = useState(false);
-            const [completedQuadrants, setCompletedQuadrants] = useState([]);
+            const [completedThemes, setCompletedThemes] = useState([]);
             const [moves, setMoves] = useState(0);
-            const [startTime, setStartTime] = useState(null);
-            const [elapsedTime, setElapsedTime] = useState(0);
-            const [showInstructions, setShowInstructions] = useState(true);
+            const [hintsUsed, setHintsUsed] = useState(0);
+            const [showHint, setShowHint] = useState(false);
+            const [currentHint, setCurrentHint] = useState('');
+            const [timer, setTimer] = useState(0);
+            const [isTimerRunning, setIsTimerRunning] = useState(false);
+            const [selectedCell, setSelectedCell] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [historyIndex, setHistoryIndex] = useState(-1);
+            const [showTutorial, setShowTutorial] = useState(false);
+            const [completedPuzzles, setCompletedPuzzles] = useState([]);
+            const [stats, setStats] = useState({
+                puzzlesCompleted: 0,
+                totalMoves: 0,
+                totalTime: 0,
+                totalHints: 0,
+                bestScores: {}
+            });
 
-            const currentGameData = selectedGameIndex !== null ? GAME_DATA[selectedGameIndex] : null;
+            const currentGameData = PUZZLES[currentPuzzleIndex];
 
+            // Load saved data from localStorage
             useEffect(() => {
-                if (startTime && !solved) {
-                    const interval = setInterval(() => {
-                        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-                    }, 1000);
-                    return () => clearInterval(interval);
+                const savedStats = localStorage.getItem('connectionaryStats');
+                if (savedStats) {
+                    setStats(JSON.parse(savedStats));
                 }
-            }, [startTime, solved]);
-            
+                const savedCompleted = localStorage.getItem('connectionaryCompletedPuzzles');
+                if (savedCompleted) {
+                    setCompletedPuzzles(JSON.parse(savedCompleted));
+                }
+                const savedTutorial = localStorage.getItem('connectionaryTutorialShown');
+                if (!savedTutorial && currentScreen === 'game') {
+                    setShowTutorial(true);
+                    localStorage.setItem('connectionaryTutorialShown', 'true');
+                }
+            }, []);
+
+            // Timer effect
+            useEffect(() => {
+                let interval;
+                if (isTimerRunning && !solved && currentScreen === 'game') {
+                    interval = setInterval(() => {
+                        setTimer(t => t + 1);
+                    }, 1000);
+                } else {
+                    clearInterval(interval);
+                }
+                return () => clearInterval(interval);
+            }, [isTimerRunning, solved, currentScreen]);
+
             const formatTime = (seconds) => {
                 const mins = Math.floor(seconds / 60);
                 const secs = seconds % 60;
                 return `${mins}:${secs.toString().padStart(2, '0')}`;
             };
-            
+
+            const calculateScore = () => {
+                const baseScore = 1000;
+                const movePenalty = moves * 10;
+                const timePenalty = Math.floor(timer / 10) * 5;
+                const hintPenalty = hintsUsed * 50;
+                return Math.max(100, baseScore - movePenalty - timePenalty - hintPenalty);
+            };
+
             const shuffleArray = (array) => {
                 const shuffled = [...array];
                 for (let i = shuffled.length - 1; i > 0; i--) {
@@ -175,183 +552,776 @@
                 return shuffled;
             };
 
-            const selectGame = (index) => {
-                const gameData = GAME_DATA[index];
-                const allNineWords = [gameData.centerWord, ...gameData.allWords];
-                const shuffledGrid = shuffleArray(allNineWords);
-                const centerIndex = shuffledGrid.indexOf(gameData.centerWord);
-                const wordAtCenter = shuffledGrid[4];
-                shuffledGrid[4] = gameData.centerWord;
-                shuffledGrid[centerIndex] = wordAtCenter;
+            const selectPuzzle = (index) => {
+                setCurrentPuzzleIndex(index);
+                setCurrentScreen('game');
+                // Tutorial shows on first game play
+                const savedTutorial = localStorage.getItem('connectionaryTutorialShown');
+                if (!savedTutorial) {
+                    setShowTutorial(true);
+                    localStorage.setItem('connectionaryTutorialShown', 'true');
+                }
+            };
+
+            const backToGallery = () => {
+                setCurrentScreen('gallery');
+            };
+
+            const initializeGame = () => {
+                const primarySolution = currentGameData.solutions[0].flat();
+                const allMovableWords = [...currentGameData.allWords];
                 
-                setGrid(shuffledGrid);
-                setShuffledClues(shuffleArray(gameData.quadrantClues));
-                setSolved(false);
-                setCompletedQuadrants([]);
-                setMoves(0);
-                setElapsedTime(0);
-                setStartTime(Date.now());
-                setSelectedGameIndex(index);
-                setShowInstructions(selectedGameIndex === null);
-            };
-            
-            useEffect(() => {
-                if (!currentGameData) return;
-                const completed = [];
-                currentGameData.quadrantClues.forEach((quad, idx) => {
-                    const quadWords = getQuadrantWords(idx);
-                    if (quadWords.length === 4 && quadWords.every(w => w !== null) && quad.words.every(w => quadWords.includes(w)) && quadWords.every(w => quad.words.includes(w))) {
-                        completed.push(idx);
+                let finalGrid;
+                let shuffleAttempts = 0;
+                const MAX_SHUFFLE_ATTEMPTS = 100;
+
+                const checkForCompleteQuadrants = (candidateGrid) => {
+                    // Check all four quadrants to see if any are complete
+                    const physicalQuadrantPositions = [
+                        [[0,0],[0,1],[1,0],[1,1]],
+                        [[0,1],[0,2],[1,1],[1,2]],
+                        [[1,0],[1,1],[2,0],[2,1]],
+                        [[1,1],[1,2],[2,1],[2,2]]
+                    ];
+
+                    for (const positions of physicalQuadrantPositions) {
+                        const playerQuadrantWords = positions.map(([r, c]) => candidateGrid[posToIndex(r, c)]);
+                        
+                        // Check against all valid solutions
+                        for (const solution of currentGameData.solutions) {
+                            const solutionGrid = solution.flat();
+                            const solutionQuadrantWords = positions.map(([r, c]) => solutionGrid[posToIndex(r, c)]);
+                            
+                            // If this quadrant matches exactly, it's complete
+                            if (JSON.stringify(playerQuadrantWords) === JSON.stringify(solutionQuadrantWords)) {
+                                return true; // Found a complete quadrant
+                            }
+                        }
                     }
-                });
-                setCompletedQuadrants(completed);
-                checkSolution();
-            }, [grid, currentGameData]);
+                    return false; // No complete quadrants found
+                };
 
-            const indexToPos = (idx) => [Math.floor(idx / 3), idx % 3];
-            const posToIndex = (row, col) => row * 3 + col;
-            
-            const getQuadrantWords = (quadrantIndex) => {
-                if (!currentGameData) return [];
-                const positions = currentGameData.quadrantClues[quadrantIndex].positions;
-                return positions.map(([r, c]) => grid[posToIndex(r, c)]);
-            };
-
-            const checkSolution = () => {
-                if (!currentGameData || grid.length === 0 || grid.includes(null)) return;
-                let isCorrect = true;
-                for (let i = 0; i < 9; i++) {
-                    const [r, c] = indexToPos(i);
-                    if (grid[i] !== currentGameData.solution[r][c]) {
-                        isCorrect = false;
+                do {
+                    let candidateMovable = shuffleArray(allMovableWords);
+                    let candidateGrid = [];
+                    let movableIndex = 0;
+                    
+                    for(let i = 0; i < 9; i++) {
+                        if (i === 4) {
+                            candidateGrid.push(currentGameData.centerWord);
+                        } else {
+                            candidateGrid.push(candidateMovable[movableIndex++]);
+                        }
+                    }
+                    
+                    // Check if any quadrants are complete
+                    const hasCompleteQuadrant = checkForCompleteQuadrants(candidateGrid);
+                    
+                    // Also check that it's not already solved
+                    const currentGridStr = JSON.stringify(candidateGrid);
+                    let isAlreadySolved = false;
+                    for (const solution of currentGameData.solutions) {
+                        if (currentGridStr === JSON.stringify(solution.flat())) {
+                            isAlreadySolved = true;
+                            break;
+                        }
+                    }
+                    
+                    // Accept the grid if no quadrants are complete and it's not solved
+                    if (!hasCompleteQuadrant && !isAlreadySolved) {
+                        finalGrid = candidateGrid;
                         break;
                     }
-                }
-                setSolved(isCorrect);
+
+                    shuffleAttempts++;
+                    if (shuffleAttempts >= MAX_SHUFFLE_ATTEMPTS) {
+                        // If we can't find a good shuffle, just use the last attempt
+                        finalGrid = candidateGrid;
+                        break;
+                    }
+                } while (true);
+                
+                setGrid(finalGrid);
+                setShuffledClues(shuffleArray(currentGameData.quadrantClues));
+                setSolved(false);
+                setCompletedThemes([]);
+                setMoves(0);
+                setHintsUsed(0);
+                setShowHint(false);
+                setTimer(0);
+                setIsTimerRunning(true);
+                setHistory([finalGrid]);
+                setHistoryIndex(0);
+                setSelectedCell(null);
             };
-            
+
+            useEffect(() => {
+                if (currentScreen === 'game') {
+                    initializeGame();
+                }
+            }, [currentPuzzleIndex, currentScreen]);
+
+            const posToIndex = (row, col) => row * 3 + col;
+
+            const findThemeForWords = (words) => {
+                const sortedWords = [...words].sort();
+                return currentGameData.quadrantClues.find(theme => 
+                    JSON.stringify([...theme.words].sort()) === JSON.stringify(sortedWords)
+                );
+            };
+
+            useEffect(() => {
+                if (!currentGameData || grid.length === 0 || currentScreen !== 'game') return;
+
+                const newCompletedThemes = [];
+                const physicalQuadrantPositions = [
+                    [[0,0],[0,1],[1,0],[1,1]],
+                    [[0,1],[0,2],[1,1],[1,2]],
+                    [[1,0],[1,1],[2,0],[2,1]],
+                    [[1,1],[1,2],[2,1],[2,2]]
+                ];
+
+                physicalQuadrantPositions.forEach((positions) => {
+                    const playerQuadrantWords = positions.map(([r, c]) => grid[posToIndex(r, c)]);
+                    for (const solution of currentGameData.solutions) {
+                        const solutionGrid = solution.flat();
+                        const solutionQuadrantWords = positions.map(([r, c]) => solutionGrid[posToIndex(r, c)]);
+                        if (JSON.stringify(playerQuadrantWords) === JSON.stringify(solutionQuadrantWords)) {
+                            const theme = findThemeForWords(playerQuadrantWords);
+                            if (theme && !newCompletedThemes.includes(theme.clue)) {
+                                newCompletedThemes.push(theme.clue);
+                            }
+                        }
+                    }
+                });
+                
+                // Check for newly completed themes
+                if (newCompletedThemes.length > completedThemes.length) {
+                    const newTheme = newCompletedThemes.find(t => !completedThemes.includes(t));
+                    if (newTheme) {
+                        const element = document.querySelector(`[data-theme="${newTheme}"]`);
+                        if (element) {
+                            element.classList.add('theme-complete');
+                            setTimeout(() => element.classList.remove('theme-complete'), 500);
+                        }
+                    }
+                }
+                
+                setCompletedThemes(newCompletedThemes);
+
+                const currentGridStr = JSON.stringify(grid);
+                for (const solution of currentGameData.solutions) {
+                    if (currentGridStr === JSON.stringify(solution.flat())) {
+                        setSolved(true);
+                        setIsTimerRunning(false);
+                        
+                        // Update completed puzzles
+                        if (!completedPuzzles.includes(currentGameData.id)) {
+                            const newCompleted = [...completedPuzzles, currentGameData.id];
+                            setCompletedPuzzles(newCompleted);
+                            localStorage.setItem('connectionaryCompletedPuzzles', JSON.stringify(newCompleted));
+                        }
+                        
+                        // Update statistics
+                        const newStats = {...stats};
+                        newStats.puzzlesCompleted++;
+                        newStats.totalMoves += moves;
+                        newStats.totalTime += timer;
+                        newStats.totalHints += hintsUsed;
+                        
+                        const score = calculateScore();
+                        if (!newStats.bestScores[currentGameData.id] || score > newStats.bestScores[currentGameData.id]) {
+                            newStats.bestScores[currentGameData.id] = score;
+                        }
+                        
+                        setStats(newStats);
+                        localStorage.setItem('connectionaryStats', JSON.stringify(newStats));
+                        return;
+                    }
+                }
+            }, [grid, currentScreen]);
+
+            const performMove = (sourceIndex, targetIndex) => {
+                if (sourceIndex === targetIndex || sourceIndex === 4 || targetIndex === 4) return;
+                
+                const newGrid = [...grid];
+                [newGrid[sourceIndex], newGrid[targetIndex]] = [newGrid[targetIndex], newGrid[sourceIndex]];
+                
+                setGrid(newGrid);
+                setMoves(moves + 1);
+                
+                // Add to history for undo/redo
+                const newHistory = history.slice(0, historyIndex + 1);
+                newHistory.push(newGrid);
+                setHistory(newHistory);
+                setHistoryIndex(newHistory.length - 1);
+            };
+
             const performDrop = (dropIndex = null) => {
                 if (!draggedItem || dropIndex === null || solved) return;
                 const { index: sourceIndex } = draggedItem;
-                if (dropIndex === 4 || sourceIndex === dropIndex) {
-                    setDraggedItem(null);
-                    return;
-                }
-                const newGrid = [...grid];
-                [newGrid[sourceIndex], newGrid[dropIndex]] = [newGrid[dropIndex], newGrid[sourceIndex]];
-                setGrid(newGrid);
-                setMoves(moves + 1);
+                performMove(sourceIndex, dropIndex);
                 setDraggedItem(null);
             };
 
-            const handleDragStart = (e, word, index) => { if (!solved) { setDraggedItem({ word, index }); e.target.classList.add('dragging'); } };
-            const handleDragEnd = (e) => e.target.classList.remove('dragging');
-            const handleDragOver = (e) => e.preventDefault();
-            const handleDrop = (e, dropIndex) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); performDrop(dropIndex); };
-            const handleDragEnter = (e) => { if (!solved) e.currentTarget.classList.add('drag-over'); };
-            const handleDragLeave = (e) => e.currentTarget.classList.remove('drag-over');
-            const handleTouchStart = (e, word, index) => { e.preventDefault(); if (!solved) { setDraggedItem({ word, index }); e.target.classList.add('dragging'); } };
-            const handleTouchMove = (e) => { e.preventDefault(); const touch = e.touches[0]; const element = document.elementFromPoint(touch.clientX, touch.clientY); document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over')); if (element && element.closest('.drop-zone')) { element.closest('.drop-zone').classList.add('drag-over'); } };
-            const handleTouchEnd = (e) => { e.preventDefault(); document.querySelectorAll('.dragging, .drag-over').forEach(el => el.classList.remove(el.classList.contains('dragging') ? 'dragging' : 'drag-over')); const touch = e.changedTouches[0]; const element = document.elementFromPoint(touch.clientX, touch.clientY); if (!draggedItem || !element) return; const dropZone = element.closest('.drop-zone'); if (!dropZone) { setDraggedItem(null); return; } const dropIndex = dropZone.dataset.dropIndex ? parseInt(dropZone.dataset.dropIndex) : null; performDrop(dropIndex); };
-            const handleReset = () => { if (selectedGameIndex !== null) selectGame(selectedGameIndex); };
-            const handleSolve = () => {
-                if (!currentGameData || solved) return;
-                setGrid(currentGameData.solution.flat());
-                setSolved(true);
+            // Keyboard controls
+            useEffect(() => {
+                if (currentScreen !== 'game') return;
+                
+                const handleKeyPress = (e) => {
+                    if (solved) return;
+                    
+                    // Undo/Redo
+                    if (e.ctrlKey || e.metaKey) {
+                        if (e.key === 'z' && historyIndex > 0) {
+                            setGrid(history[historyIndex - 1]);
+                            setHistoryIndex(historyIndex - 1);
+                        } else if (e.key === 'y' && historyIndex < history.length - 1) {
+                            setGrid(history[historyIndex + 1]);
+                            setHistoryIndex(historyIndex + 1);
+                        }
+                        return;
+                    }
+                    
+                    // Cell selection with number keys
+                    if (e.key >= '1' && e.key <= '9') {
+                        const index = parseInt(e.key) - 1;
+                        if (index === 4) return; // Center cell
+                        if (selectedCell === null) {
+                            setSelectedCell(index);
+                        } else {
+                            performMove(selectedCell, index);
+                            setSelectedCell(null);
+                        }
+                    }
+                    
+                    // Escape to deselect
+                    if (e.key === 'Escape') {
+                        setSelectedCell(null);
+                    }
+                    
+                    // H for hint
+                    if (e.key === 'h' || e.key === 'H') {
+                        getHint();
+                    }
+                };
+                
+                window.addEventListener('keydown', handleKeyPress);
+                return () => window.removeEventListener('keydown', handleKeyPress);
+            }, [selectedCell, solved, historyIndex, history, currentScreen]);
+
+            const getHint = () => {
+                if (!currentGameData.hints || currentGameData.hints.length === 0) {
+                    setCurrentHint("No hints available for this puzzle");
+                    setShowHint(true);
+                    return;
+                }
+                if (hintsUsed >= currentGameData.hints.length) {
+                    setCurrentHint("No more hints available!");
+                } else {
+                    setCurrentHint(currentGameData.hints[hintsUsed]);
+                    setHintsUsed(hintsUsed + 1);
+                }
+                setShowHint(true);
             };
             
-            if (selectedGameIndex === null) {
+            const handleDragStart = (e, word, index) => { 
+                if (!solved && index !== 4) { 
+                    setDraggedItem({ word, index }); 
+                    e.target.classList.add('dragging');
+                    setSelectedCell(null);
+                } 
+            };
+            
+            const handleDragEnd = (e) => e.target.classList.remove('dragging');
+            const handleDragOver = (e) => e.preventDefault();
+            const handleDrop = (e, dropIndex) => { 
+                e.preventDefault(); 
+                e.currentTarget.classList.remove('drag-over'); 
+                performDrop(dropIndex); 
+            };
+            const handleDragEnter = (e) => { if (!solved) e.currentTarget.classList.add('drag-over'); };
+            const handleDragLeave = (e) => e.currentTarget.classList.remove('drag-over');
+
+            const handleCellClick = (index) => {
+                if (solved || index === 4) return;
+                
+                if (selectedCell === null) {
+                    setSelectedCell(index);
+                } else if (selectedCell === index) {
+                    setSelectedCell(null);
+                } else {
+                    performMove(selectedCell, index);
+                    setSelectedCell(null);
+                }
+            };
+
+            const nextPuzzle = () => {
+                if (currentPuzzleIndex < PUZZLES.length - 1) {
+                    setCurrentPuzzleIndex(currentPuzzleIndex + 1);
+                } else {
+                    setCurrentPuzzleIndex(0);
+                }
+            };
+
+            // Puzzle Gallery Screen
+            if (currentScreen === 'gallery') {
                 return (
-                    <div className="min-h-screen flex items-center justify-center p-4">
-                        <div className="text-center">
-                             <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">Quadrant Connections</h1>
-                            <p className="text-slate-300 mb-8 max-w-lg mx-auto">A logic puzzle where every word must satisfy multiple overlapping themes. Choose a puzzle to begin.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {GAME_DATA.map((game, index) => (<button key={index} onClick={() => selectGame(index)} className="bg-slate-800 border-2 border-slate-600 hover:border-blue-500 hover:bg-slate-700 text-white rounded-lg p-6 text-left transition-all w-full"><div className="text-xl font-bold mb-2">{game.title}</div><div className="text-sm text-slate-400">{game.description}</div></button>))}
+                    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
+                        <div className="max-w-6xl mx-auto">
+                            <div className="text-center mb-8">
+                                <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">CONNECTIONARY</h1>
+                                <p className="text-slate-300 text-lg">Choose a puzzle to play</p>
+                                <div className="mt-4 text-slate-400">
+                                    {completedPuzzles.length} of {PUZZLES.length} puzzles completed
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {PUZZLES.map((puzzle, index) => {
+                                    const isCompleted = completedPuzzles.includes(puzzle.id);
+                                    const bestScore = stats.bestScores[puzzle.id];
+                                    
+                                    return (
+                                        <div 
+                                            key={puzzle.id}
+                                            onClick={() => selectPuzzle(index)}
+                                            className="bg-slate-800 rounded-xl p-6 cursor-pointer transform transition-all hover:scale-105 hover:bg-slate-700 relative"
+                                        >
+                                            <h3 className="text-2xl font-bold text-white mb-3">{puzzle.title}</h3>
+                                            
+                                            <p className="text-slate-400 text-sm mb-3">{puzzle.description}</p>
+                                            
+                                            {bestScore && (
+                                                <div className="text-center">
+                                                    <span className="text-yellow-400 text-sm">Best Score: {bestScore}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            
+                            <div className="text-center mt-8">
+                                <button 
+                                    onClick={() => setShowTutorial(true)}
+                                    className="text-blue-400 hover:text-blue-300 underline"
+                                >
+                                    How to Play
+                                </button>
                             </div>
                         </div>
+                        
+                        {/* Tutorial Modal for Gallery */}
+                        {showTutorial && (
+                            <div className="modal">
+                                <div className="modal-content bg-slate-800 rounded-xl p-6 max-w-md mx-4">
+                                    <h2 className="text-2xl font-bold text-white mb-4">How to Play Connectionary</h2>
+                                    <div className="space-y-3 text-slate-300 text-sm">
+                                        <p>🎯 <strong>Goal:</strong> Arrange words so each 2×2 quadrant matches a theme</p>
+                                        <p>🔒 <strong>Center:</strong> The golden center word is locked and connects all themes</p>
+                                        <p>🖱️ <strong>Controls:</strong> Drag & drop words, or click to select and swap</p>
+                                        <p>⌨️ <strong>Shortcuts:</strong> Use 1-9 keys, Ctrl+Z (undo), H (hint)</p>
+                                        <p>💡 <strong>Strategy:</strong> The center word belongs to ALL four themes!</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowTutorial(false)} 
+                                        className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                    >
+                                        Got it!
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
 
+            // Game Screen
+            if (!grid.length) {
+                return <div className="min-h-screen flex items-center justify-center text-white">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                        <p>Loading puzzle...</p>
+                    </div>
+                </div>;
+            }
+
             return (
                 <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-8">
-                    <div className="max-w-6xl mx-auto">
-                        <div className="text-center mb-6"><h1 className="text-3xl md:text-4xl font-bold text-white mb-2">{currentGameData.title}</h1><p className="text-slate-300 text-sm md:text-base">Swap words to solve the grid • Each 2×2 quadrant has a theme</p></div>
-                        <div className="flex justify-center gap-4 md:gap-8 mb-6 text-white">
-                            <div className="text-center"><div className="text-2xl font-bold">{moves}</div><div className="text-xs text-slate-400">Moves</div></div>
-                            <div className="text-center"><div className="text-2xl font-bold">{formatTime(elapsedTime)}</div><div className="text-xs text-slate-400">Time</div></div>
-                            <div className="text-center"><div className="text-2xl font-bold">{completedQuadrants.length}/4</div><div className="text-xs text-slate-400">Quadrants</div></div>
+                    {/* Tutorial Modal */}
+                    {showTutorial && (
+                        <div className="modal">
+                            <div className="modal-content bg-slate-800 rounded-xl p-6 max-w-md mx-4">
+                                <h2 className="text-2xl font-bold text-white mb-4">How to Play Connectionary</h2>
+                                <div className="space-y-3 text-slate-300 text-sm">
+                                    <p>🎯 <strong>Goal:</strong> Arrange words so each 2×2 quadrant matches a theme</p>
+                                    <p>🔒 <strong>Center:</strong> The golden center word is locked and connects all themes</p>
+                                    <p>🖱️ <strong>Controls:</strong> Drag & drop words, or click to select and swap</p>
+                                    <p>⌨️ <strong>Shortcuts:</strong> Use 1-9 keys, Ctrl+Z (undo), H (hint)</p>
+                                    <p>💡 <strong>Strategy:</strong> The center word belongs to ALL four themes!</p>
+                                </div>
+                                <button 
+                                    onClick={() => setShowTutorial(false)} 
+                                    className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                >
+                                    Got it! Let's Play
+                                </button>
+                            </div>
                         </div>
+                    )}
 
-                        {showInstructions && (<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full"><h2 className="text-2xl font-bold mb-4">How to Play</h2><div className="space-y-3 text-sm"><p>🎯 <strong>Swap to Solve:</strong> Drag a word onto another to swap their positions.</p><p>📋 Each 2×2 quadrant must match one of the four themes.</p><p>🔒 {currentGameData.centerWord} is locked in the center—it fits all four themes!</p><p>✅ The puzzle is solved when all words are in their correct spots, satisfying all four quadrant themes simultaneously.</p></div><button onClick={() => setShowInstructions(false)} className="w-full mt-6 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg">Start Playing!</button></div></div>)}
-
+                    <div className="max-w-6xl mx-auto">
+                        {/* Header */}
+                        <div className="text-center mb-6">
+                            <button 
+                                onClick={backToGallery}
+                                className="absolute left-4 top-4 text-slate-400 hover:text-white transition-colors"
+                            >
+                                ← Back to Gallery
+                            </button>
+                            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">CONNECTIONARY</h1>
+                            <p className="text-slate-300 text-sm md:text-base">
+                                Puzzle {currentGameData.id} of {PUZZLES.length} • {currentGameData.title}
+                            </p>
+                        </div>
+                        
                         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                            {/* Left Panel */}
                             <div className="lg:col-span-2">
-                                <div className="bg-slate-800 rounded-lg p-4 mb-4 text-center">
-                                    {solved ? (
-                                        <>
-                                            <h3 className="text-white font-bold text-xl mb-1">🎉 Puzzle Solved!</h3>
-                                            <div className="text-slate-300 text-sm">{moves} moves in {formatTime(elapsedTime)}</div>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <h3 className="text-white font-bold">The Four Themes:</h3>
-                                            <p className="text-slate-400 text-xs">(locations hidden until solved)</p>
-                                        </>
-                                    )}
+                                {/* Status Bar */}
+                                <div className="bg-slate-800 rounded-lg p-4 mb-4">
+                                    <h3 className="text-white font-bold text-lg mb-2">{currentGameData.title}</h3>
+                                    <p className="text-slate-300 text-sm mb-3">{currentGameData.description}</p>
+                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                        <div>
+                                            <div className="text-2xl font-bold text-white">{moves}</div>
+                                            <div className="text-xs text-slate-400">Moves</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-white">{formatTime(timer)}</div>
+                                            <div className="text-xs text-slate-400">Time</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-2xl font-bold text-white">{calculateScore()}</div>
+                                            <div className="text-xs text-slate-400">Score</div>
+                                        </div>
+                                    </div>
+                                    {/* Progress Bar */}
+                                    <div className="mt-3 bg-slate-700 rounded-full h-2 overflow-hidden">
+                                        <div 
+                                            className="progress-bar bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full"
+                                            style={{ width: `${(completedThemes.length / 4) * 100}%` }}
+                                        ></div>
+                                    </div>
                                 </div>
+
+                                {/* Themes */}
+                                <div className="space-y-3 mb-6">
+                                    <h3 className="text-white font-bold">The Four Themes:</h3>
+                                    {shuffledClues.map((quad, displayIdx) => {
+                                        const isCompleted = completedThemes.includes(quad.clue);
+                                        return (
+                                            <div 
+                                                key={displayIdx} 
+                                                data-theme={quad.clue}
+                                                className={`p-3 rounded-lg border-2 transition-all ${
+                                                    isCompleted ? 'border-green-400 bg-green-900 bg-opacity-30' : 'border-slate-600'
+                                                } ${
+                                                    quad.color === 'blue' ? 'bg-blue-900 bg-opacity-30' : 
+                                                    quad.color === 'green' ? 'bg-green-900 bg-opacity-30' : 
+                                                    quad.color === 'purple' ? 'bg-purple-900 bg-opacity-30' : 
+                                                    'bg-orange-900 bg-opacity-30'
+                                                }`}
+                                            >
+                                                <div className={`text-sm font-semibold transition-colors ${
+                                                    isCompleted ? 'text-green-400' : 'text-slate-300'
+                                                }`}>
+                                                    {isCompleted && '✓ '}{quad.clue}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Hint Section */}
+                                {showHint && currentHint && (
+                                    <div className="mb-4 bg-yellow-900 bg-opacity-30 border-2 border-yellow-600 rounded-lg p-3">
+                                        <div className="text-yellow-300 text-sm">
+                                            <strong>💡 Hint:</strong> {currentHint}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Controls */}
                                 <div className="space-y-3">
-                                    {shuffledClues.map((quad, displayIdx) => { const actualIdx = currentGameData.quadrantClues.findIndex(q => q.clue === quad.clue); const isCompleted = completedQuadrants.includes(actualIdx); return (<div key={displayIdx} className={`p-3 rounded-lg border-2 transition-all ${isCompleted ? 'quadrant-complete border-green-400 shadow-lg' : 'border-slate-600'} ${quad.color === 'blue' ? 'bg-blue-900 bg-opacity-30' : quad.color === 'green' ? 'bg-green-900 bg-opacity-30' : quad.color === 'purple' ? 'bg-purple-900 bg-opacity-30' : 'bg-orange-900 bg-opacity-30'}`}> <div className="flex items-center justify-between mb-1"><div className="font-bold text-xs uppercase text-slate-400">{solved ? quad.name : '??? Location'}</div><div className="text-xl">{quad.icon}</div></div> <div className="text-sm font-semibold text-slate-300">{quad.clue}</div> </div>); })}
-                                </div>
-                                <div className="mt-6 space-y-3">
-                                    {solved ? (
-                                        <button onClick={() => setSelectedGameIndex(null)} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg">Play a Different Puzzle</button>
+                                    {!solved ? (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button 
+                                                    onClick={() => {
+                                                        if (historyIndex > 0) {
+                                                            setGrid(history[historyIndex - 1]);
+                                                            setHistoryIndex(historyIndex - 1);
+                                                        }
+                                                    }}
+                                                    disabled={historyIndex <= 0 || solved}
+                                                    className="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm"
+                                                >
+                                                    ↶ Undo
+                                                </button>
+                                                <button 
+                                                    onClick={() => {
+                                                        if (historyIndex < history.length - 1) {
+                                                            setGrid(history[historyIndex + 1]);
+                                                            setHistoryIndex(historyIndex + 1);
+                                                        }
+                                                    }}
+                                                    disabled={historyIndex >= history.length - 1 || solved}
+                                                    className="bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition-colors text-sm"
+                                                >
+                                                    ↷ Redo
+                                                </button>
+                                            </div>
+                                            
+                                            {currentGameData.hints && currentGameData.hints.length > 0 && (
+                                                <button 
+                                                    onClick={getHint}
+                                                    disabled={solved || hintsUsed >= currentGameData.hints.length}
+                                                    className="w-full bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-800 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                                >
+                                                    💡 Get Hint ({currentGameData.hints.length - hintsUsed} left)
+                                                </button>
+                                            )}
+                                            
+                                            <button 
+                                                onClick={initializeGame} 
+                                                className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                            >
+                                                🔄 Reset Puzzle
+                                            </button>
+                                        </>
                                     ) : (
                                         <>
-                                            <button onClick={() => setSelectedGameIndex(null)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">⬅️ Change Game</button>
-                                            <button onClick={handleReset} className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors">🔄 Reset Current Game</button>
-                                            <button onClick={handleSolve} className="w-full bg-yellow-500 hover:bg-yellow-600 text-yellow-900 font-bold py-2 rounded-lg transition-colors">💡 Solve Puzzle</button>
-                                            <button onClick={() => setShowInstructions(true)} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded-lg transition-colors">❓ How to Play</button>
+                                            <div className="bg-green-800 bg-opacity-50 rounded-lg p-4 text-center">
+                                                <h3 className="text-2xl font-bold text-green-400 mb-2">✓ Puzzle Complete!</h3>
+                                                <p className="text-white text-lg">Score: {calculateScore()} points</p>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <button 
+                                                    onClick={initializeGame} 
+                                                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                                >
+                                                    Play Again
+                                                </button>
+                                                <button 
+                                                    onClick={nextPuzzle} 
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                                >
+                                                    Next Puzzle
+                                                </button>
+                                            </div>
+                                            <button 
+                                                onClick={backToGallery} 
+                                                className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                            >
+                                                Back to Gallery
+                                            </button>
                                         </>
                                     )}
+                                    
+                                    <button 
+                                        onClick={() => setShowTutorial(true)} 
+                                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+                                    >
+                                        📖 How to Play
+                                    </button>
                                 </div>
                             </div>
 
+                            {/* Game Grid */}
                             <div className="lg:col-span-3">
                                 <div className="bg-white rounded-xl shadow-2xl p-6">
                                     <div className="relative">
-                                        <div className="grid grid-cols-3 gap-3 md:gap-4">
-                                            {grid.map((word, idx) => {
-                                                const isCenter = idx === 4;
-                                                return (
-                                                    <div key={idx} data-drop-index={idx} onDragOver={!isCenter ? handleDragOver : undefined} onDrop={!isCenter ? (e) => handleDrop(e, idx) : undefined} onDragEnter={!isCenter ? handleDragEnter : undefined} onDragLeave={!isCenter ? handleDragLeave : undefined} className={`aspect-square rounded-lg border-4 flex items-center justify-center transition-all relative drop-zone ${isCenter ? 'locked-cell border-amber-500' : 'bg-slate-50 border-slate-400'} ${!isCenter && !solved ? 'cursor-move' : ''}`}>
-                                                        {isCenter && (<div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-1"><svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg></div>)}
-                                                        <div draggable={!isCenter && !solved} onDragStart={!isCenter && !solved ? (e) => handleDragStart(e, word, idx) : undefined} onDragEnd={handleDragEnd} onTouchStart={!isCenter && !solved ? (e) => handleTouchStart(e, word, idx) : undefined} onTouchMove={!isCenter && !solved ? handleTouchMove : undefined} onTouchEnd={!isCenter && !solved ? handleTouchEnd : undefined} className={`text-center p-2 w-full h-full flex items-center justify-center ${!isCenter && !solved ? 'word-item' : ''}`}><div className={`font-bold text-base md:text-lg ${isCenter ? 'text-amber-900' : 'text-slate-800'}`}>{word}</div></div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        {solved && (
-                                            <div className="absolute inset-0 z-10 pointer-events-none">
-                                                {currentGameData.quadrantClues.map((quad, idx) => {
-                                                    let positionStyle = {};
-                                                    switch (quad.name) {
-                                                        case 'Top-Left':    positionStyle = { top: '30%', left: '29%' }; break;
-                                                        case 'Top-Right':   positionStyle = { top: '30%', left: '63%' }; break;
-                                                        case 'Bottom-Left': positionStyle = { top: '64%', left: '29%' }; break;
-                                                        case 'Bottom-Right':positionStyle = { top: '64%', left: '63%' }; break;
+                                        {/* Quadrant Completion Icons */}
+                                        {(() => {
+                                            const quadrantPositions = [
+                                                { positions: [0,1,3,4], style: { top: '-16px', left: '-16px' } },      // top-left
+                                                { positions: [1,2,4,5], style: { top: '-16px', right: '-16px' } },     // top-right
+                                                { positions: [3,4,6,7], style: { bottom: '-16px', left: '-16px' } },   // bottom-left
+                                                { positions: [4,5,7,8], style: { bottom: '-16px', right: '-16px' } }   // bottom-right
+                                            ];
+                                            
+                                            return quadrantPositions.map((quadrant, qIdx) => {
+                                                const quadrantWords = quadrant.positions.map(pos => grid[pos]);
+                                                
+                                                // Find if this quadrant is complete
+                                                let completedTheme = null;
+                                                for (const solution of currentGameData.solutions) {
+                                                    const solutionGrid = solution.flat();
+                                                    const solutionQuadrantWords = quadrant.positions.map(pos => solutionGrid[pos]);
+                                                    
+                                                    if (JSON.stringify(quadrantWords) === JSON.stringify(solutionQuadrantWords)) {
+                                                        // Find the matching theme
+                                                        completedTheme = currentGameData.quadrantClues.find(clue => 
+                                                            clue.words.every(w => quadrantWords.includes(w))
+                                                        );
+                                                        break;
                                                     }
+                                                }
+                                                
+                                                if (completedTheme && completedTheme.icon) {
                                                     return (
-                                                        <div key={idx} className="absolute -translate-x-1/2 -translate-y-1/2 w-16 h-16 md:w-20 md:h-20 bg-white rounded-full flex items-center justify-center shadow-xl border-4 border-slate-300 reveal-animation" style={{ ...positionStyle, animationDelay: `${idx * 100}ms` }}>
-                                                            <span className="text-3xl md:text-4xl">{quad.icon}</span>
+                                                        <div 
+                                                            key={qIdx}
+                                                            className={`quadrant-icon ${completedThemes.includes(completedTheme.clue) ? 'active' : ''}`}
+                                                            style={quadrant.style}
+                                                        >
+                                                            {completedTheme.icon}
                                                         </div>
                                                     );
-                                                })}
-                                            </div>
-                                        )}
+                                                }
+                                                return null;
+                                            });
+                                        })()}
+                                        
+                                        <div className="grid grid-cols-3 gap-3 md:gap-4">
+                                        {grid.map((word, idx) => {
+                                            const isCenter = idx === 4;
+                                            const isSelected = selectedCell === idx;
+                                            
+                                            // Get position-based explanation when solved
+                                            let explanationText = '';
+                                            if (solved && currentGameData.explanations) {
+                                                const row = Math.floor(idx / 3);
+                                                const col = idx % 3;
+                                                
+                                                if (isCenter) {
+                                                    // Center word - show simplified multi-meaning
+                                                    explanationText = currentGameData.explanations[word];
+                                                } else {
+                                                    // For other words, determine which quadrants they belong to
+                                                    const quadrants = [];
+                                                    
+                                                    // Top-left quadrant (positions 0,1,3,4)
+                                                    if ((row === 0 && col === 0) || (row === 0 && col === 1) || 
+                                                        (row === 1 && col === 0) || (row === 1 && col === 1)) {
+                                                        const topLeftWords = [grid[0], grid[1], grid[3], grid[4]];
+                                                        currentGameData.quadrantClues.forEach(clue => {
+                                                            if (clue.words.includes(word) && 
+                                                                clue.words.every(w => topLeftWords.includes(w))) {
+                                                                quadrants.push(clue.clue);
+                                                            }
+                                                        });
+                                                    }
+                                                    
+                                                    // Top-right quadrant (positions 1,2,4,5)
+                                                    if ((row === 0 && col === 1) || (row === 0 && col === 2) || 
+                                                        (row === 1 && col === 1) || (row === 1 && col === 2)) {
+                                                        const topRightWords = [grid[1], grid[2], grid[4], grid[5]];
+                                                        currentGameData.quadrantClues.forEach(clue => {
+                                                            if (clue.words.includes(word) && 
+                                                                clue.words.every(w => topRightWords.includes(w))) {
+                                                                quadrants.push(clue.clue);
+                                                            }
+                                                        });
+                                                    }
+                                                    
+                                                    // Bottom-left quadrant (positions 3,4,6,7)
+                                                    if ((row === 1 && col === 0) || (row === 1 && col === 1) || 
+                                                        (row === 2 && col === 0) || (row === 2 && col === 1)) {
+                                                        const bottomLeftWords = [grid[3], grid[4], grid[6], grid[7]];
+                                                        currentGameData.quadrantClues.forEach(clue => {
+                                                            if (clue.words.includes(word) && 
+                                                                clue.words.every(w => bottomLeftWords.includes(w))) {
+                                                                quadrants.push(clue.clue);
+                                                            }
+                                                        });
+                                                    }
+                                                    
+                                                    // Bottom-right quadrant (positions 4,5,7,8)
+                                                    if ((row === 1 && col === 1) || (row === 1 && col === 2) || 
+                                                        (row === 2 && col === 1) || (row === 2 && col === 2)) {
+                                                        const bottomRightWords = [grid[4], grid[5], grid[7], grid[8]];
+                                                        currentGameData.quadrantClues.forEach(clue => {
+                                                            if (clue.words.includes(word) && 
+                                                                clue.words.every(w => bottomRightWords.includes(w))) {
+                                                                quadrants.push(clue.clue);
+                                                            }
+                                                        });
+                                                    }
+                                                    
+                                                    // Get the explanation for this word
+                                                    explanationText = currentGameData.explanations[word] || '';
+                                                }
+                                            }
+                                            
+                                            return (
+                                                <div 
+                                                    key={idx} 
+                                                    data-drop-index={idx} 
+                                                    onDragOver={!isCenter ? handleDragOver : undefined} 
+                                                    onDrop={!isCenter ? (e) => handleDrop(e, idx) : undefined} 
+                                                    onDragEnter={!isCenter ? handleDragEnter : undefined} 
+                                                    onDragLeave={!isCenter ? handleDragLeave : undefined}
+                                                    onClick={() => handleCellClick(idx)}
+                                                    className={`aspect-square rounded-lg border-4 flex items-center justify-center transition-all relative ${
+                                                        isCenter ? 'locked-cell border-amber-500' : 
+                                                        isSelected ? 'bg-blue-100 border-blue-500 transform scale-105' :
+                                                        solved ? 'bg-green-50 border-green-400' :
+                                                        'bg-slate-50 border-slate-400 hover:border-slate-500'
+                                                    } ${!isCenter && !solved ? 'cursor-pointer' : ''}`}
+                                                >
+                                                    {isCenter && (
+                                                        <div className="absolute -top-2 -right-2 bg-amber-500 rounded-full p-1 z-10">
+                                                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                                            </svg>
+                                                        </div>
+                                                    )}
+                                                    <div 
+                                                        draggable={!isCenter && !solved} 
+                                                        onDragStart={!isCenter && !solved ? (e) => handleDragStart(e, word, idx) : undefined} 
+                                                        onDragEnd={handleDragEnd} 
+                                                        className={`text-center p-1 w-full h-full flex flex-col items-center justify-center ${
+                                                            !isCenter && !solved ? 'word-item' : ''
+                                                        }`}
+                                                    >
+                                                        <div className={`font-bold text-base md:text-lg ${
+                                                            isCenter ? 'text-amber-900' : 
+                                                            solved ? 'text-green-800' : 'text-slate-800'
+                                                        }`}>
+                                                            {word}
+                                                        </div>
+                                                        {!isCenter && !solved && (
+                                                            <div className="text-xs text-slate-400 mt-1">{idx + 1}</div>
+                                                        )}
+                                                        {solved && explanationText && (
+                                                            <div className="text-[12px] text-slate-500 mt-1 px-1 leading-tight">
+                                                                {explanationText.split(' / ').map((part, i) => (
+                                                                    <div key={i}>{part}</div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <div className="mt-6 pt-6 border-t"><div className="text-center text-sm text-slate-600"><p className="font-semibold mb-2">{solved ? '🎉 Puzzle Solved!' : 'Arrange the words by swapping them.'}</p><p className="text-xs text-slate-500">💡 A quadrant will light up when its four words are correct.</p></div></div>
+                                    </div>
+                                    
+                                    <div className="mt-6 pt-6 border-t">
+                                        <div className="text-center text-sm text-slate-600">
+                                            <p className="font-semibold mb-2">
+                                                {solved ? '🎉 Puzzle solved! Explanations shown in grid.' : 'Arrange words by clicking or dragging'}
+                                            </p>
+                                            {!solved && (
+                                                <p className="text-xs">
+                                                    Use number keys 1-9 for quick selection • Press H for hints
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -360,7 +1330,7 @@
             );
         }
 
-        ReactDOM.render(<QuadrantConnections />, document.getElementById('root'));
+        ReactDOM.render(<ConnectionaryGame />, document.getElementById('root'));
     </script>
 </body>
 </html>
